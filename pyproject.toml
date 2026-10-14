@@ -7,11 +7,13 @@ requires-python = ">=3.11,<3.14"
 dependencies = [
     "alembic>=1.14,<2",
     "fastapi>=0.115,<1",
+    "pgvector>=0.3,<1",
     "pydantic-settings>=2.7,<3",
     "psycopg[binary]>=3.2,<4",
     "pypdf>=5.1,<6",
     "python-multipart>=0.0.20,<1",
     "sqlalchemy>=2.0,<3",
+    "sentence-transformers>=3.3,<6",
     "tiktoken>=0.8,<1",
     "uvicorn[standard]>=0.34,<1",
 ]
@@ -22,6 +24,9 @@ dev = [
     "pytest>=8.3,<9",
     "ruff>=0.9,<1",
 ]
+
+[project.scripts]
+rag-evaluate = "app.evaluation:main"
 
 [build-system]
 requires = ["hatchling"]

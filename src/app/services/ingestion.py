@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Chunk, Document, DocumentStatus
 from app.services.chunking import TokenChunker
+from app.services.embeddings import Embedder
 from app.services.pdf import extract_pages
 
 
@@ -15,6 +16,7 @@ def ingest_pdf(
     content_type: str,
     content: bytes,
     chunker: TokenChunker,
+    embedder: Embedder,
 ) -> tuple[Document, bool]:
     digest = hashlib.sha256(content).hexdigest()
     existing = db.scalar(select(Document).where(Document.sha256 == digest))
@@ -23,6 +25,9 @@ def ingest_pdf(
 
     pages = extract_pages(content)
     text_chunks = chunker.chunk_pages(pages)
+    embeddings = embedder.embed_documents([chunk.content for chunk in text_chunks])
+    if len(embeddings) != len(text_chunks):
+        raise ValueError("Embedding model returned an unexpected number of vectors")
     document = Document(
         filename=filename,
         content_type=content_type,
@@ -37,6 +42,7 @@ def ingest_pdf(
             page_number=chunk.page_number,
             content=chunk.content,
             token_count=chunk.token_count,
+            embedding=embeddings[index],
         )
         for index, chunk in enumerate(text_chunks)
     ]

@@ -8,10 +8,18 @@ from sqlalchemy.orm import Session
 from app.config import Settings, get_settings
 from app.database import get_db
 from app.models import Chunk, Document
-from app.schemas import DocumentResponse, HealthResponse
+from app.schemas import (
+    DocumentResponse,
+    HealthResponse,
+    RetrievalRequest,
+    RetrievalResponse,
+    RetrievalResult,
+)
 from app.services.chunking import TokenChunker
+from app.services.embeddings import Embedder, get_embedder
 from app.services.ingestion import ingest_pdf
 from app.services.pdf import InvalidPdfError
+from app.services.retrieval import hybrid_search
 
 router = APIRouter()
 
@@ -56,6 +64,7 @@ async def upload_document(
     response: Response,
     db: Annotated[Session, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
+    embedder: Annotated[Embedder, Depends(get_embedder)],
 ) -> DocumentResponse:
     filename = file.filename or "document.pdf"
     if file.content_type != "application/pdf" and not filename.lower().endswith(".pdf"):
@@ -79,6 +88,7 @@ async def upload_document(
             content_type="application/pdf",
             content=content,
             chunker=chunker,
+            embedder=embedder,
         )
     except InvalidPdfError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -93,3 +103,34 @@ def get_document(document_id: str, db: Annotated[Session, Depends(get_db)]) -> D
     if document is None:
         raise HTTPException(status_code=404, detail="Document not found")
     return to_response(db, document)
+
+
+@router.post(
+    "/api/v1/retrieval/search",
+    response_model=RetrievalResponse,
+    tags=["retrieval"],
+)
+def search_documents(
+    request: RetrievalRequest,
+    db: Annotated[Session, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    embedder: Annotated[Embedder, Depends(get_embedder)],
+) -> RetrievalResponse:
+    dense_weight = (
+        request.dense_weight
+        if request.dense_weight is not None
+        else settings.retrieval_dense_weight
+    )
+    hits = hybrid_search(
+        db,
+        query=request.query,
+        embedder=embedder,
+        top_k=request.top_k,
+        dense_weight=dense_weight,
+        candidate_limit=max(settings.retrieval_candidate_limit, request.top_k),
+        document_ids=request.document_ids,
+    )
+    return RetrievalResponse(
+        query=request.query,
+        results=[RetrievalResult(**vars(hit)) for hit in hits],
+    )

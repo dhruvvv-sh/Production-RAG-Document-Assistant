@@ -1,4 +1,6 @@
 import os
+import re
+from math import sqrt
 
 os.environ["DATABASE_URL"] = "sqlite+pysqlite:///:memory:"
 
@@ -11,6 +13,25 @@ from sqlalchemy.pool import StaticPool
 from app.config import Settings, get_settings
 from app.database import Base, get_db
 from app.main import app
+from app.services.embeddings import get_embedder
+
+
+class FakeEmbedder:
+    dimension = 384
+
+    def _embed(self, text: str) -> list[float]:
+        vector = [0.0] * self.dimension
+        for token in re.findall(r"\w+", text.casefold()):
+            index = sum((position + 1) * ord(character) for position, character in enumerate(token))
+            vector[index % self.dimension] += 1.0
+        norm = sqrt(sum(value * value for value in vector)) or 1.0
+        return [value / norm for value in vector]
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        return [self._embed(text) for text in texts]
+
+    def embed_query(self, text: str) -> list[float]:
+        return self._embed(text)
 
 
 @pytest.fixture
@@ -35,6 +56,7 @@ def client(db_session):
         yield db_session
 
     app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[get_embedder] = lambda: FakeEmbedder()
     app.dependency_overrides[get_settings] = lambda: Settings(
         database_url="sqlite+pysqlite:///:memory:",
         chunk_min_tokens=20,

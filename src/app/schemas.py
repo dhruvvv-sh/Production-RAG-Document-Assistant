@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.models import DocumentStatus
 
@@ -19,3 +19,26 @@ class DocumentResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str
+
+
+class RetrievalRequest(BaseModel):
+    query: str = Field(min_length=2, max_length=2000)
+    document_ids: list[str] | None = Field(default=None, max_length=100)
+    top_k: int = Field(default=5, ge=1, le=50)
+    dense_weight: float | None = Field(default=None, ge=0, le=1)
+
+
+class RetrievalResult(BaseModel):
+    chunk_id: str
+    document_id: str
+    filename: str
+    page_number: int
+    content: str
+    dense_score: float | None
+    bm25_score: float | None
+    hybrid_score: float
+
+
+class RetrievalResponse(BaseModel):
+    query: str
+    results: list[RetrievalResult]

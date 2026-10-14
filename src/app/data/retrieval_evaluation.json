@@ -1,0 +1,38 @@
+{
+  "corpus": [
+    {"id": "leave-annual", "text": "Full-time employees receive twenty days of paid annual leave each calendar year."},
+    {"id": "leave-sick", "text": "Employees may take ten paid sick days for illness or medical appointments."},
+    {"id": "leave-parental", "text": "Primary caregivers qualify for sixteen weeks of paid parental leave."},
+    {"id": "security-password", "text": "Passwords must contain at least fourteen characters and must not be reused across systems."},
+    {"id": "security-mfa", "text": "Multi-factor authentication is mandatory for remote access and administrator accounts."},
+    {"id": "security-incident", "text": "Suspected security incidents must be reported to the SOC within thirty minutes."},
+    {"id": "finance-expense", "text": "Expense reports must be submitted in Concur within thirty days of purchase."},
+    {"id": "finance-travel", "text": "International travel requires manager approval before tickets are booked."},
+    {"id": "finance-invoice", "text": "Supplier invoices use payment terms of net forty-five days unless a contract overrides them."},
+    {"id": "it-backup", "text": "Production databases are backed up nightly and retained for thirty-five days."},
+    {"id": "it-recovery", "text": "The recovery time objective for tier-one services is four hours."},
+    {"id": "it-device", "text": "Company laptops must install operating system security updates within seven days."},
+    {"id": "hr-probation", "text": "New employees complete a probation period lasting ninety calendar days."},
+    {"id": "hr-review", "text": "Performance reviews take place twice per year in June and December."},
+    {"id": "hr-referral", "text": "The employee referral bonus is paid after the referred hire completes six months."},
+    {"id": "privacy-retention", "text": "Customer support recordings are deleted after one hundred eighty days."},
+    {"id": "privacy-access", "text": "Data access requests must be acknowledged within three business days."},
+    {"id": "privacy-export", "text": "Personal data exports are encrypted before delivery to the requester."},
+    {"id": "office-hours", "text": "The Bengaluru office is open from eight in the morning until eight in the evening."},
+    {"id": "office-visitors", "text": "Visitors must show identification and wear a temporary badge at all times."},
+    {"id": "engineering-review", "text": "Every production code change requires approval from one engineer other than the author."},
+    {"id": "engineering-release", "text": "Emergency releases require an incident ticket and retrospective review."},
+    {"id": "support-priority", "text": "Priority one customer cases have a fifteen-minute initial response target."},
+    {"id": "support-escalation", "text": "Unresolved priority two cases are escalated after four hours."}
+  ],
+  "queries": [
+    {"query": "How much vacation does a full-time worker get?", "relevant_chunk_ids": ["leave-annual"]},
+    {"query": "What is the RTO for the most critical services?", "relevant_chunk_ids": ["it-recovery"]},
+    {"query": "When do we purge call recordings from customer support?", "relevant_chunk_ids": ["privacy-retention"]},
+    {"query": "How quickly must a P1 ticket receive a reply?", "relevant_chunk_ids": ["support-priority"]},
+    {"query": "What are the rules for overseas business trips?", "relevant_chunk_ids": ["finance-travel"]},
+    {"query": "How long is the trial period for a new hire?", "relevant_chunk_ids": ["hr-probation"]},
+    {"query": "Who needs two-step verification?", "relevant_chunk_ids": ["security-mfa"]},
+    {"query": "How long do we keep nightly database copies?", "relevant_chunk_ids": ["it-backup"]}
+  ]
+}

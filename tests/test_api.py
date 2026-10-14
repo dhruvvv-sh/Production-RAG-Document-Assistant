@@ -35,6 +35,16 @@ def test_upload_and_get_document(client, monkeypatch):
     assert duplicate.status_code == 200
     assert duplicate.json()["id"] == payload["id"]
 
+    search = client.post(
+        "/api/v1/retrieval/search",
+        json={"query": "evidence sentence", "top_k": 5},
+    )
+    assert search.status_code == 200
+    result = search.json()["results"][0]
+    assert result["document_id"] == payload["id"]
+    assert result["page_number"] == 1
+    assert result["hybrid_score"] > 0
+
 
 def test_rejects_non_pdf(client):
     response = client.post(
