@@ -1,3 +1,5 @@
+"""the following file helps with pdf reading and extracting text"""
+
 from dataclasses import dataclass
 from io import BytesIO
 
