@@ -1,3 +1,5 @@
+"""splits text into token-limited chunks"""
+
 import re
 from dataclasses import dataclass
 
