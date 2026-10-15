@@ -1,3 +1,4 @@
+from time import perf_counter
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
@@ -14,11 +15,13 @@ from app.schemas import (
     RetrievalRequest,
     RetrievalResponse,
     RetrievalResult,
+    RetrievalTiming,
 )
 from app.services.chunking import TokenChunker
 from app.services.embeddings import Embedder, get_embedder
 from app.services.ingestion import ingest_pdf
 from app.services.pdf import InvalidPdfError
+from app.services.reranking import Reranker, get_reranker, rerank_hits
 from app.services.retrieval import hybrid_search
 
 router = APIRouter()
@@ -115,22 +118,62 @@ def search_documents(
     db: Annotated[Session, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
     embedder: Annotated[Embedder, Depends(get_embedder)],
+    reranker: Annotated[Reranker, Depends(get_reranker)],
 ) -> RetrievalResponse:
+    started_at = perf_counter()
     dense_weight = (
         request.dense_weight
         if request.dense_weight is not None
         else settings.retrieval_dense_weight
     )
-    hits = hybrid_search(
+    candidate_k = max(
+        request.top_k,
+        request.candidate_k or settings.reranker_candidate_limit,
+    )
+    candidates = hybrid_search(
         db,
         query=request.query,
         embedder=embedder,
-        top_k=request.top_k,
+        top_k=candidate_k,
         dense_weight=dense_weight,
-        candidate_limit=max(settings.retrieval_candidate_limit, request.top_k),
+        candidate_limit=max(settings.retrieval_candidate_limit, candidate_k),
         document_ids=request.document_ids,
     )
+    retrieved_at = perf_counter()
+    if request.rerank:
+        reranked = rerank_hits(
+            request.query,
+            candidates,
+            reranker,
+            top_k=request.top_k,
+        )
+        results = [
+            RetrievalResult(
+                **vars(item.hit),
+                retrieval_rank=item.retrieval_rank,
+                rerank_score=item.rerank_score,
+                final_rank=rank,
+            )
+            for rank, item in enumerate(reranked, start=1)
+        ]
+    else:
+        results = [
+            RetrievalResult(
+                **vars(hit),
+                retrieval_rank=rank,
+                rerank_score=None,
+                final_rank=rank,
+            )
+            for rank, hit in enumerate(candidates[: request.top_k], start=1)
+        ]
+    completed_at = perf_counter()
     return RetrievalResponse(
         query=request.query,
-        results=[RetrievalResult(**vars(hit)) for hit in hits],
+        candidate_count=len(candidates),
+        timing=RetrievalTiming(
+            retrieval_ms=round((retrieved_at - started_at) * 1000, 3),
+            reranking_ms=round((completed_at - retrieved_at) * 1000, 3),
+            total_ms=round((completed_at - started_at) * 1000, 3),
+        ),
+        results=results,
     )

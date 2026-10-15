@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     embedding_dimension: int = Field(default=384, gt=0)
     retrieval_dense_weight: float = Field(default=0.55, ge=0, le=1)
     retrieval_candidate_limit: int = Field(default=50, ge=5, le=1000)
+    reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    reranker_candidate_limit: int = Field(default=20, ge=5, le=100)
+    reranker_batch_size: int = Field(default=16, ge=1, le=128)
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

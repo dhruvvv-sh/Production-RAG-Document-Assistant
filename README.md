@@ -12,14 +12,15 @@ reranking.
 2. **Hybrid retrieval (implemented)** — BM25 and sentence-transformer indexes,
    pgvector cosine search, score normalization/fusion, retrieval API, and
    Recall@k evaluation.
-3. **Cross-encoder reranking** — rerank candidate passages and measure Recall@k,
-   MRR, and evidence precision.
+3. **Cross-encoder reranking (implemented)** — retrieve 20 candidates, rerank
+   query-passage pairs, return the best five, and measure MRR, evidence precision,
+   and latency.
 4. **Grounded answer generation** — prompt construction, model adapter,
    page-level citations, and evidence validation.
 5. **Evaluation and production hardening** — evaluation datasets, faithfulness
    and citation metrics, background jobs, observability, caching, and deployment.
 
-Stages 1 and 2 are included at this point.
+Stages 1 through 3 are included at this point.
 
 ## Stage 1 architecture
 
@@ -43,6 +44,15 @@ Every result includes its document, filename, PDF page, chunk text, dense score,
 BM25 score, and combined score. These identifiers and page numbers form the
 evidence references used by the citation stage.
 
+## Stage 3 architecture
+
+Hybrid retrieval supplies 20 candidates to
+`cross-encoder/ms-marco-MiniLM-L-6-v2`. The cross-encoder scores each
+query-passage pair and the API returns the five highest-scoring evidence chunks.
+Long passages are evaluated in overlapping windows and use their best window
+score. The response includes original retrieval rank, reranker score, final rank,
+candidate count, and retrieval/reranking/total latency.
+
 ## Quick start
 
 Requirements: Docker (recommended), or Python 3.11–3.13 and an existing
@@ -62,7 +72,7 @@ curl -F "file=@document.pdf" http://localhost:8000/api/v1/documents
 curl http://localhost:8000/api/v1/documents/<document-id>
 curl -X POST http://localhost:8000/api/v1/retrieval/search \
   -H 'Content-Type: application/json' \
-  -d '{"query":"What is the annual leave allowance?","top_k":5}'
+  -d '{"query":"What is the annual leave allowance?","candidate_k":20,"top_k":5}'
 ```
 
 The upload limit defaults to 25 MiB. Duplicate content returns the existing
@@ -89,9 +99,9 @@ uv run rag-evaluate
 uv run rag-evaluate --dataset path/to/labeled-dataset.json --k 5
 ```
 
-The bundled 24-chunk smoke dataset currently scores `1.00` dense Recall@5 and
-`1.00` hybrid Recall@5. It verifies the evaluation pipeline but is too small and
-easy to support a production-quality improvement claim. The target improvement
-from 78.4% to 89.7% must be measured on a larger, representative labeled dataset;
-the evaluator reports both scores and the percentage-point difference without
-hard-coding them.
+The bundled 24-chunk smoke dataset currently scores `1.00` dense Recall@5,
+`1.00` hybrid Recall@5, `0.875` hybrid MRR, and `1.00` reranked MRR. Precision@5
+is `0.20` before and after reranking because each smoke query has exactly one
+labeled relevant chunk, making `0.20` its maximum. The target production metrics
+must be measured on a larger dataset with complete relevance judgments; the
+evaluator calculates the scores and latency without hard-coding outcomes.

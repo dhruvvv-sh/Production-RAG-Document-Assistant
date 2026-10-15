@@ -14,6 +14,7 @@ from app.config import Settings, get_settings
 from app.database import Base, get_db
 from app.main import app
 from app.services.embeddings import get_embedder
+from app.services.reranking import get_reranker
 
 
 class FakeEmbedder:
@@ -32,6 +33,15 @@ class FakeEmbedder:
 
     def embed_query(self, text: str) -> list[float]:
         return self._embed(text)
+
+
+class FakeReranker:
+    def score(self, query: str, passages: list[str]) -> list[float]:
+        query_terms = set(re.findall(r"\w+", query.casefold()))
+        return [
+            float(len(query_terms & set(re.findall(r"\w+", passage.casefold()))))
+            for passage in passages
+        ]
 
 
 @pytest.fixture
@@ -57,6 +67,7 @@ def client(db_session):
 
     app.dependency_overrides[get_db] = override_db
     app.dependency_overrides[get_embedder] = lambda: FakeEmbedder()
+    app.dependency_overrides[get_reranker] = lambda: FakeReranker()
     app.dependency_overrides[get_settings] = lambda: Settings(
         database_url="sqlite+pysqlite:///:memory:",
         chunk_min_tokens=20,

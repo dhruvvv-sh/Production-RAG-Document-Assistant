@@ -44,6 +44,11 @@ def test_upload_and_get_document(client, monkeypatch):
     assert result["document_id"] == payload["id"]
     assert result["page_number"] == 1
     assert result["hybrid_score"] > 0
+    assert result["retrieval_rank"] >= 1
+    assert result["rerank_score"] is not None
+    assert result["final_rank"] == 1
+    assert search.json()["candidate_count"] > 0
+    assert search.json()["timing"]["total_ms"] >= 0
 
 
 def test_rejects_non_pdf(client):
