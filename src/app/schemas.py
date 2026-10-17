@@ -55,3 +55,46 @@ class RetrievalResponse(BaseModel):
     candidate_count: int
     timing: RetrievalTiming
     results: list[RetrievalResult]
+
+
+class QueryRequest(BaseModel):
+    question: str = Field(min_length=2, max_length=2000)
+    document_ids: list[str] | None = Field(default=None, max_length=100)
+    top_k: int = Field(default=5, ge=1, le=10)
+    candidate_k: int | None = Field(default=None, ge=1, le=100)
+    dense_weight: float | None = Field(default=None, ge=0, le=1)
+
+
+class CitationResponse(BaseModel):
+    citation_number: int
+    evidence_id: str
+    document_id: str
+    filename: str
+    page_number: int
+    chunk_id: str
+
+
+class UnsupportedClaimResponse(BaseModel):
+    text: str
+    reason: str
+
+
+class QueryTiming(BaseModel):
+    retrieval_ms: float
+    reranking_ms: float
+    generation_ms: float
+    validation_ms: float
+    total_ms: float
+
+
+class QueryResponse(BaseModel):
+    answer: str
+    citations: list[CitationResponse]
+    evidence: list[RetrievalResult]
+    unsupported_claims: list[UnsupportedClaimResponse]
+    citation_correctness: bool
+    citation_correctness_score: float
+    faithfulness_score: float
+    confidence: float
+    insufficient_evidence: bool
+    timing: QueryTiming

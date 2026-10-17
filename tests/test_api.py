@@ -50,6 +50,21 @@ def test_upload_and_get_document(client, monkeypatch):
     assert search.json()["candidate_count"] > 0
     assert search.json()["timing"]["total_ms"] >= 0
 
+    answer = client.post(
+        "/api/v1/query",
+        json={"question": "What does the evidence sentence provide?"},
+    )
+    assert answer.status_code == 200
+    answer_payload = answer.json()
+    assert answer_payload["insufficient_evidence"] is False
+    assert answer_payload["citation_correctness"] is True
+    assert answer_payload["citations"][0]["document_id"] == payload["id"]
+    assert answer_payload["citations"][0]["page_number"] == 1
+    assert answer_payload["citations"][0]["chunk_id"]
+    assert "[1]" in answer_payload["answer"]
+    assert answer_payload["faithfulness_score"] > 0.5
+    assert answer_payload["evidence"]
+
 
 def test_rejects_non_pdf(client):
     response = client.post(
@@ -57,3 +72,12 @@ def test_rejects_non_pdf(client):
         files={"file": ("notes.txt", b"not a pdf", "text/plain")},
     )
     assert response.status_code == 415
+
+
+def test_query_safely_handles_no_evidence(client):
+    response = client.post("/api/v1/query", json={"question": "What is the policy?"})
+
+    assert response.status_code == 200
+    assert response.json()["insufficient_evidence"] is True
+    assert response.json()["citations"] == []
+    assert response.json()["confidence"] == 0.0

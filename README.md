@@ -15,12 +15,13 @@ reranking.
 3. **Cross-encoder reranking (implemented)** — retrieve 20 candidates, rerank
    query-passage pairs, return the best five, and measure MRR, evidence precision,
    and latency.
-4. **Grounded answer generation** — prompt construction, model adapter,
-   page-level citations, and evidence validation.
+4. **Grounded answer generation (implemented)** — configurable model provider,
+   structured claim generation, page-level citations, support validation, and
+   safe insufficient-evidence responses.
 5. **Evaluation and production hardening** — evaluation datasets, faithfulness
    and citation metrics, background jobs, observability, caching, and deployment.
 
-Stages 1 through 3 are included at this point.
+Stages 1 through 4 are included at this point.
 
 ## Stage 1 architecture
 
@@ -53,6 +54,23 @@ Long passages are evaluated in overlapping windows and use their best window
 score. The response includes original retrieval rank, reranker score, final rank,
 candidate count, and retrieval/reranking/total latency.
 
+## Stage 4 architecture
+
+The query endpoint retrieves and reranks evidence before sending an allow-listed
+set of evidence IDs and text to the configured language model. The model returns
+structured atomic claims rather than final citation markup. The server then:
+
+1. Rejects evidence IDs that were not retrieved.
+2. Scores every claim-citation pair with the configurable NLI entailment model.
+3. Removes citations and claims below the configured support threshold.
+4. Constructs the final answer and numbered page-level citations itself.
+5. Returns a safe insufficient-evidence response when no supported claims remain.
+
+The default provider uses the OpenAI Responses API with structured output and
+`store=false`. Set `OPENAI_API_KEY` in `.env`; `LLM_PROVIDER`, `LLM_MODEL`, and
+`FAITHFULNESS_MODEL`, and `CLAIM_SUPPORT_THRESHOLD` are configurable. Provider
+failures return `503` without exposing a fabricated answer.
+
 ## Quick start
 
 Requirements: Docker (recommended), or Python 3.11–3.13 and an existing
@@ -73,6 +91,9 @@ curl http://localhost:8000/api/v1/documents/<document-id>
 curl -X POST http://localhost:8000/api/v1/retrieval/search \
   -H 'Content-Type: application/json' \
   -d '{"query":"What is the annual leave allowance?","candidate_k":20,"top_k":5}'
+curl -X POST http://localhost:8000/api/v1/query \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"What is the annual leave allowance?"}'
 ```
 
 The upload limit defaults to 25 MiB. Duplicate content returns the existing
@@ -105,3 +126,10 @@ is `0.20` before and after reranking because each smoke query has exactly one
 labeled relevant chunk, making `0.20` its maximum. The target production metrics
 must be measured on a larger dataset with complete relevance judgments; the
 evaluator calculates the scores and latency without hard-coding outcomes.
+
+Grounded responses include citation correctness, faithfulness, confidence,
+unsupported claims, all retrieved evidence, and stage-by-stage latency. The
+evaluation module aggregates citation correctness and answer faithfulness across
+a result set. The 92% citation-correctness and 87% faithfulness targets remain
+targets until measured with representative labeled questions and an enabled LLM
+provider.

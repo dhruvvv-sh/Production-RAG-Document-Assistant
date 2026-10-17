@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -19,6 +19,13 @@ class Settings(BaseSettings):
     reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
     reranker_candidate_limit: int = Field(default=20, ge=5, le=100)
     reranker_batch_size: int = Field(default=16, ge=1, le=128)
+    llm_provider: str = "openai"
+    llm_model: str = "gpt-4o-mini"
+    openai_api_key: SecretStr | None = None
+    llm_timeout_seconds: float = Field(default=60, gt=0, le=300)
+    faithfulness_model: str = "cross-encoder/nli-deberta-v3-small"
+    faithfulness_batch_size: int = Field(default=16, ge=1, le=128)
+    claim_support_threshold: float = Field(default=0.5, ge=0, le=1)
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

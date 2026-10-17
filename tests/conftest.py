@@ -14,6 +14,8 @@ from app.config import Settings, get_settings
 from app.database import Base, get_db
 from app.main import app
 from app.services.embeddings import get_embedder
+from app.services.faithfulness import get_support_validator
+from app.services.llm import GeneratedAnswer, GeneratedClaim, get_llm_provider
 from app.services.reranking import get_reranker
 
 
@@ -44,6 +46,24 @@ class FakeReranker:
         ]
 
 
+class FakeLLMProvider:
+    def generate(self, question, evidence):
+        return GeneratedAnswer(
+            insufficient_evidence=False,
+            claims=[
+                GeneratedClaim(
+                    text="The evidence sentence provides the answer",
+                    evidence_ids=["E1"],
+                )
+            ],
+        )
+
+
+class FakeSupportValidator:
+    def score(self, claim, passages):
+        return [0.95 for _ in passages]
+
+
 @pytest.fixture
 def db_session():
     engine = create_engine(
@@ -68,6 +88,8 @@ def client(db_session):
     app.dependency_overrides[get_db] = override_db
     app.dependency_overrides[get_embedder] = lambda: FakeEmbedder()
     app.dependency_overrides[get_reranker] = lambda: FakeReranker()
+    app.dependency_overrides[get_llm_provider] = lambda: FakeLLMProvider()
+    app.dependency_overrides[get_support_validator] = lambda: FakeSupportValidator()
     app.dependency_overrides[get_settings] = lambda: Settings(
         database_url="sqlite+pysqlite:///:memory:",
         chunk_min_tokens=20,

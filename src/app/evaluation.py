@@ -6,6 +6,7 @@ from time import perf_counter
 from typing import Any
 
 from app.config import get_settings
+from app.services.answering import GroundedAnswer
 from app.services.bm25 import BM25Index
 from app.services.embeddings import Embedder, get_embedder
 from app.services.reranking import Reranker, get_reranker
@@ -42,6 +43,16 @@ class RerankingEvaluationReport:
     average_total_ms: float
 
 
+@dataclass(frozen=True)
+class GroundingEvaluationReport:
+    answer_count: int
+    answered_count: int
+    citation_count: int
+    citation_correctness: float
+    answer_faithfulness: float
+    insufficient_evidence_rate: float
+
+
 def _recall(retrieved: list[str], relevant: set[str]) -> float:
     if not relevant:
         return 0.0
@@ -57,6 +68,28 @@ def _reciprocal_rank(ranking: list[str], relevant: set[str]) -> float:
 
 def _precision_at_k(ranking: list[str], relevant: set[str], k: int) -> float:
     return len(set(ranking[:k]) & relevant) / k
+
+
+def evaluate_grounding(answers: list[GroundedAnswer]) -> GroundingEvaluationReport:
+    citation_count = sum(answer.total_citation_count for answer in answers)
+    correct_citations = sum(answer.correct_citation_count for answer in answers)
+    answered = [answer for answer in answers if not answer.insufficient_evidence]
+    return GroundingEvaluationReport(
+        answer_count=len(answers),
+        answered_count=len(answered),
+        citation_count=citation_count,
+        citation_correctness=(correct_citations / citation_count if citation_count else 0.0),
+        answer_faithfulness=(
+            sum(answer.faithfulness_score for answer in answered) / len(answered)
+            if answered
+            else 0.0
+        ),
+        insufficient_evidence_rate=(
+            sum(answer.insufficient_evidence for answer in answers) / len(answers)
+            if answers
+            else 0.0
+        ),
+    )
 
 
 def evaluate_dataset(

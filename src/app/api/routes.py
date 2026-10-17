@@ -10,16 +10,28 @@ from app.config import Settings, get_settings
 from app.database import get_db
 from app.models import Chunk, Document
 from app.schemas import (
+    CitationResponse,
     DocumentResponse,
     HealthResponse,
+    QueryRequest,
+    QueryResponse,
+    QueryTiming,
     RetrievalRequest,
     RetrievalResponse,
     RetrievalResult,
     RetrievalTiming,
+    UnsupportedClaimResponse,
+)
+from app.services.answering import (
+    INSUFFICIENT_EVIDENCE_ANSWER,
+    evidence_prompt_items,
+    validate_and_build_answer,
 )
 from app.services.chunking import TokenChunker
 from app.services.embeddings import Embedder, get_embedder
+from app.services.faithfulness import SupportValidator, get_support_validator
 from app.services.ingestion import ingest_pdf
+from app.services.llm import LLMProvider, LLMProviderError, get_llm_provider
 from app.services.pdf import InvalidPdfError
 from app.services.reranking import Reranker, get_reranker, rerank_hits
 from app.services.retrieval import hybrid_search
@@ -176,4 +188,113 @@ def search_documents(
             total_ms=round((completed_at - started_at) * 1000, 3),
         ),
         results=results,
+    )
+
+
+@router.post(
+    "/api/v1/query",
+    response_model=QueryResponse,
+    tags=["answers"],
+)
+def answer_question(
+    request: QueryRequest,
+    db: Annotated[Session, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    embedder: Annotated[Embedder, Depends(get_embedder)],
+    reranker: Annotated[Reranker, Depends(get_reranker)],
+    llm_provider: Annotated[LLMProvider, Depends(get_llm_provider)],
+    support_validator: Annotated[SupportValidator, Depends(get_support_validator)],
+) -> QueryResponse:
+    started_at = perf_counter()
+    dense_weight = (
+        request.dense_weight
+        if request.dense_weight is not None
+        else settings.retrieval_dense_weight
+    )
+    candidate_k = max(
+        request.top_k,
+        request.candidate_k or settings.reranker_candidate_limit,
+    )
+    candidates = hybrid_search(
+        db,
+        query=request.question,
+        embedder=embedder,
+        top_k=candidate_k,
+        dense_weight=dense_weight,
+        candidate_limit=max(settings.retrieval_candidate_limit, candidate_k),
+        document_ids=request.document_ids,
+    )
+    retrieved_at = perf_counter()
+    reranked = rerank_hits(
+        request.question,
+        candidates,
+        reranker,
+        top_k=request.top_k,
+    )
+    reranked_at = perf_counter()
+    evidence = [
+        RetrievalResult(
+            **vars(item.hit),
+            retrieval_rank=item.retrieval_rank,
+            rerank_score=item.rerank_score,
+            final_rank=rank,
+        )
+        for rank, item in enumerate(reranked, start=1)
+    ]
+
+    if not reranked:
+        completed_at = perf_counter()
+        return QueryResponse(
+            answer=INSUFFICIENT_EVIDENCE_ANSWER,
+            citations=[],
+            evidence=[],
+            unsupported_claims=[],
+            citation_correctness=True,
+            citation_correctness_score=1.0,
+            faithfulness_score=0.0,
+            confidence=0.0,
+            insufficient_evidence=True,
+            timing=QueryTiming(
+                retrieval_ms=round((retrieved_at - started_at) * 1000, 3),
+                reranking_ms=round((reranked_at - retrieved_at) * 1000, 3),
+                generation_ms=0.0,
+                validation_ms=0.0,
+                total_ms=round((completed_at - started_at) * 1000, 3),
+            ),
+        )
+
+    try:
+        generated = llm_provider.generate(
+            request.question,
+            evidence_prompt_items(reranked),
+        )
+    except LLMProviderError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    generated_at = perf_counter()
+    grounded = validate_and_build_answer(
+        generated,
+        reranked,
+        support_validator,
+        support_threshold=settings.claim_support_threshold,
+    )
+    completed_at = perf_counter()
+    return QueryResponse(
+        answer=grounded.answer,
+        citations=[CitationResponse(**vars(citation)) for citation in grounded.citations],
+        evidence=evidence,
+        unsupported_claims=[
+            UnsupportedClaimResponse(**vars(claim)) for claim in grounded.unsupported_claims
+        ],
+        citation_correctness=grounded.citation_correctness,
+        citation_correctness_score=grounded.citation_correctness_score,
+        faithfulness_score=grounded.faithfulness_score,
+        confidence=grounded.confidence,
+        insufficient_evidence=grounded.insufficient_evidence,
+        timing=QueryTiming(
+            retrieval_ms=round((retrieved_at - started_at) * 1000, 3),
+            reranking_ms=round((reranked_at - retrieved_at) * 1000, 3),
+            generation_ms=round((generated_at - reranked_at) * 1000, 3),
+            validation_ms=round((completed_at - generated_at) * 1000, 3),
+            total_ms=round((completed_at - started_at) * 1000, 3),
+        ),
     )
